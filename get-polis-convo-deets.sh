@@ -67,16 +67,24 @@ COMMENT_COUNT=$(jq -r '."n-cmts"' <<< "$MATH_DATA")
 META_COUNT=$(jq -r '."meta-tids" | length' <<< "$MATH_DATA")
 GROUP_COUNT=$(jq -r '."group-clusters" | length' <<< "$MATH_DATA")
 
-# --- Print ---
-echo "Date: " $(date -r $(($TIMESTAMP / 1000)) "+%Y-%m-%d")
-echo "Title: " "$TITLE"
-echo "URL: " "${BASE_URL}${CONVO_ID}"
-echo "Vis? " $([ "$VIS_TYPE" == 1 ] && echo "y" || echo "n")
-echo "Closed? " $([ "$OPEN_STATUS" == "false" ] && echo "y" || echo "n")
-echo "---"
-echo "Voters: " $VOTER_COUNT
-echo "Groups: " $GROUP_COUNT
-echo "Comments: " $COMMENT_COUNT
-echo "Meta Cmnts: " $META_COUNT
-echo "Lang guess: " $LANG
-echo "Owner: " $OWNER
+# --- Print with emoji ---
+printf "📅 Date:      %s\n" "$(date -r $(($TIMESTAMP / 1000)) "+%Y-%m-%d")"
+printf "📝 Title:     %s\n" "$TITLE"
+printf "🔗 URL:       %s\n" "${BASE_URL}${CONVO_ID}"
+printf "👀 Visible?:  %s\n" $([ "$VIS_TYPE" == 1 ] && echo "yes" || echo "no")
+printf "🔒 Closed?:   %s\n" $([ "$OPEN_STATUS" == "false" ] && echo "yes" || echo "no")
+echo "------------------------------"
+printf "🙋 Voters:    %s\n" "$VOTER_COUNT"
+printf "👥 Groups:    %s\n" "$GROUP_COUNT"
+printf "💬 Comments:  %s\n" "$COMMENT_COUNT"
+printf "🧩 Meta cmts: %s\n" "$META_COUNT"
+printf "🌐 Lang:      %s\n" "$LANG"
+printf "👤 Owner:     %s\n" "$OWNER"
+
+# Optional warning highlights
+if [[ "$OPEN_STATUS" == "false" ]]; then
+  echo "⚠️  Conversation is closed!"
+fi
+if [[ "$VOTER_COUNT" -eq 0 ]]; then
+  echo "⚠️  No voters recorded yet."
+fi
