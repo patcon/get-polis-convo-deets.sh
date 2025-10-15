@@ -9,9 +9,9 @@ function onOpen() {
   if (sheet.getName() !== SHEET_NAME) return;
 
   SpreadsheetApp.getUi()
-    .createMenu('🗳 Polis Tools')
-    .addItem('Update Polis Details (All Rows)', 'updatePolisSheet')
-    .addItem('Update Polis Details (Selection)', 'updatePolisSelection')
+    .createMenu("🗳 Polis Tools")
+    .addItem("Update Polis Details (All Rows)", "updatePolisSheet")
+    .addItem("Update Polis Details (Selection)", "updatePolisSelection")
     .addToUi();
 }
 
@@ -21,11 +21,48 @@ function onOpen() {
 function gasFetch(url) {
   const response = UrlFetchApp.fetch(url, {
     muteHttpExceptions: true,
-    headers: { 'User-Agent': 'x' },
+    headers: { "User-Agent": "x" },
   });
   return {
-    text: function() { return response.getContentText(); }
+    text: function () {
+      return response.getContentText();
+    },
   };
+}
+
+/**
+ * Fetch all comments for a conversation and compute a sorted language list (GAS synchronous version)
+ * @param {string} baseUrl
+ * @param {string} convoId
+ * @param {Function} fetchFn
+ */
+function getCommentLangs(baseUrl, convoId, fetchFn) {
+  const url = `${baseUrl}api/v3/comments?conversation_id=${convoId}&moderation=true&include_voting_patterns=true`;
+  let comments;
+  try {
+    comments = JSON.parse(fetchFn(url).text());
+  } catch (err) {
+    return "unknown";
+  }
+
+  const langCounts = {};
+  comments.forEach(function (c) {
+    // Only count languages for comments that are not moderated out (mod !== -1)
+    if (c.lang && c.mod !== -1)
+      langCounts[c.lang] = (langCounts[c.lang] || 0) + 1;
+  });
+
+  // fallback if no comment langs
+  if (!Object.keys(langCounts).length) langCounts["unknown"] = 1;
+
+  return Object.entries(langCounts)
+    .sort(function (a, b) {
+      return b[1] - a[1];
+    })
+    .map(function (entry) {
+      return entry[0];
+    })
+    .join(", ");
 }
 
 /**
@@ -52,12 +89,19 @@ function getPolisDetails(input, fetchFn) {
     return { domain, baseUrl, reportId, convoId };
   }
 
-  const { baseUrl, reportId, convoId: initialConvo, domain } = parsePolisInput(input);
+  const {
+    baseUrl,
+    reportId,
+    convoId: initialConvo,
+    domain,
+  } = parsePolisInput(input);
   let convoId = initialConvo;
 
   if (reportId) {
     try {
-      const reportData = JSON.parse(fetchFn(`${baseUrl}api/v3/reports?report_id=${reportId}`).text());
+      const reportData = JSON.parse(
+        fetchFn(`${baseUrl}api/v3/reports?report_id=${reportId}`).text()
+      );
       convoId = reportData[0]?.conversation_id;
     } catch (err) {
       return { error: "Report lookup failed", cause: err.message };
@@ -68,7 +112,11 @@ function getPolisDetails(input, fetchFn) {
 
   let convData;
   try {
-    convData = JSON.parse(fetchFn(`${baseUrl}api/v3/conversations?conversation_id=${convoId}`).text());
+    convData = JSON.parse(
+      fetchFn(
+        `${baseUrl}api/v3/conversations?conversation_id=${convoId}`
+      ).text()
+    );
   } catch (err) {
     return { error: "Conversation unavailable", cause: err.message };
   }
@@ -82,36 +130,53 @@ function getPolisDetails(input, fetchFn) {
     convo = convData;
   }
 
-  if (!convo || Object.keys(convo).length === 0) return { error: "Invalid conversation data" };
+  if (!convo || Object.keys(convo).length === 0)
+    return { error: "Invalid conversation data" };
 
   let mathData = {};
   try {
-    mathData = JSON.parse(fetchFn(`${baseUrl}api/v3/math/pca2?conversation_id=${convoId}`).text());
+    mathData = JSON.parse(
+      fetchFn(`${baseUrl}api/v3/math/pca2?conversation_id=${convoId}`).text()
+    );
   } catch {}
 
   let ts = null;
   if (convo.created) {
-    const createdNum = typeof convo.created === 'string' ? parseInt(convo.created, 10) : convo.created;
+    const createdNum =
+      typeof convo.created === "string"
+        ? parseInt(convo.created, 10)
+        : convo.created;
     ts = new Date(createdNum < 1e12 ? createdNum * 1000 : createdNum);
   }
 
-  // --- Fetch participationInit for language info ---
+  // Get comprehensive language information from comments
   let lang = convo.lang || "---";
   try {
-    const initData = JSON.parse(fetchFn(`${baseUrl}api/v3/participationInit?conversation_id=${convoId}`).text());
-    lang = initData.nextComment?.lang || lang;
-  } catch {}
+    lang = getCommentLangs(baseUrl, convoId, fetchFn);
+  } catch (err) {
+    // Fallback to conversation lang if comment fetching fails
+    lang = convo.lang || "---";
+  }
 
   return {
-    date: ts ? Utilities.formatDate(ts, Session.getScriptTimeZone(), "yyyy-MM-dd") : "---",
+    date: ts
+      ? Utilities.formatDate(ts, Session.getScriptTimeZone(), "yyyy-MM-dd")
+      : "---",
     title: convo.topic || convo.title || "---",
     convoUrl: `${baseUrl}${convoId}`,
     visible: convo.vis_type === 1 ? "✅ yes" : "✖️ no",
     closed: convo.is_active === false ? "✅ yes" : "❌ no",
-    reportUrl: reportId ? `${baseUrl}report/${reportId}` : (convo.report_id ? `${baseUrl}report/${convo.report_id}` : "---"),
+    reportUrl: reportId
+      ? `${baseUrl}report/${reportId}`
+      : convo.report_id
+      ? `${baseUrl}report/${convo.report_id}`
+      : "---",
     voters: mathData.n ?? "---",
-    groups: (mathData["group-clusters"] && Array.isArray(mathData["group-clusters"])) ? mathData["group-clusters"].length : (convo.group_count ?? "---"),
-    comments: mathData["n-cmts"] ?? (convo.comment_count ?? "---"),
+    groups:
+      mathData["group-clusters"] && Array.isArray(mathData["group-clusters"])
+        ? mathData["group-clusters"].length
+        : convo.group_count ?? "---",
+    comments: mathData["n-cmts"] ?? convo.comment_count ?? "---",
     meta: mathData["meta-tids"]?.length ?? "---",
     lang: lang,
     owner: convo.ownername || convo.owner || "---",
@@ -125,7 +190,9 @@ function getPolisDetails(input, fetchFn) {
 function updatePolisSelection() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   if (sheet.getName() !== SHEET_NAME) {
-    SpreadsheetApp.getUi().alert(`❌ This function only runs on the "${SHEET_NAME}" sheet.`);
+    SpreadsheetApp.getUi().alert(
+      `❌ This function only runs on the "${SHEET_NAME}" sheet.`
+    );
     return;
   }
 
@@ -136,13 +203,13 @@ function updatePolisSelection() {
 
   const col = {};
   headers.forEach((h, i) => (col[h.trim()] = i));
-  const convoUrlCol = col['Conversation URL'];
-  const reportUrlCol = col['Report URL'];
+  const convoUrlCol = col["Conversation URL"];
+  const reportUrlCol = col["Report URL"];
 
   for (let i = 0; i < data.length; i++) {
     const row = data[i];
     const inputUrl = row[convoUrlCol] || row[reportUrlCol];
-    if (!inputUrl || inputUrl === '---') continue;
+    if (!inputUrl || inputUrl === "---") continue;
 
     try {
       const details = getPolisDetails(inputUrl, gasFetch);
@@ -152,7 +219,9 @@ function updatePolisSelection() {
     }
   }
 
-  SpreadsheetApp.getUi().alert('✅ Polis details update complete for selected rows!');
+  SpreadsheetApp.getUi().alert(
+    "✅ Polis details update complete for selected rows!"
+  );
 }
 
 /**
@@ -161,7 +230,9 @@ function updatePolisSelection() {
 function updatePolisSheet() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   if (sheet.getName() !== SHEET_NAME) {
-    SpreadsheetApp.getUi().alert(`❌ This function only runs on the "${SHEET_NAME}" sheet.`);
+    SpreadsheetApp.getUi().alert(
+      `❌ This function only runs on the "${SHEET_NAME}" sheet.`
+    );
     return;
   }
 
@@ -169,13 +240,13 @@ function updatePolisSheet() {
   const headers = data[0];
   const col = {};
   headers.forEach((h, i) => (col[h.trim()] = i));
-  const convoUrlCol = col['Conversation URL'];
-  const reportUrlCol = col['Report URL'];
+  const convoUrlCol = col["Conversation URL"];
+  const reportUrlCol = col["Report URL"];
 
   for (let r = 1; r < data.length; r++) {
     const row = data[r];
     const inputUrl = row[convoUrlCol] || row[reportUrlCol];
-    if (!inputUrl || inputUrl === '---') continue;
+    if (!inputUrl || inputUrl === "---") continue;
 
     try {
       const details = getPolisDetails(inputUrl, gasFetch);
@@ -185,7 +256,9 @@ function updatePolisSheet() {
     }
   }
 
-  SpreadsheetApp.getUi().alert('✅ Polis details update complete for all rows!');
+  SpreadsheetApp.getUi().alert(
+    "✅ Polis details update complete for all rows!"
+  );
 }
 
 /**
@@ -195,21 +268,21 @@ function applyPolisDetails(sheet, rowNum, details, col) {
   function setIfEmpty(header, value) {
     if (col[header] === undefined) return;
     const cell = sheet.getRange(rowNum, col[header] + 1);
-    if (cell.getValue() === '' || cell.getValue() === '---') {
+    if (cell.getValue() === "" || cell.getValue() === "---") {
       cell.setValue(value);
     }
   }
 
-  setIfEmpty('Date Created', details.date);
-  setIfEmpty('Title', details.title);
-  setIfEmpty('Viz?', details.visible);
-  setIfEmpty('Closed?', details.closed);
-  setIfEmpty('Report URL', details.reportUrl);
-  setIfEmpty('# Voters', details.voters);
-  setIfEmpty('# Grps', details.groups);
-  setIfEmpty('# Cmnts', details.comments);
-  setIfEmpty('# Meta', details.meta);
-  setIfEmpty('Language', details.lang);
-  setIfEmpty('Account Owner', details.owner);
+  setIfEmpty("Date Created", details.date);
+  setIfEmpty("Title", details.title);
+  setIfEmpty("Viz?", details.visible);
+  setIfEmpty("Closed?", details.closed);
+  setIfEmpty("Report URL", details.reportUrl);
+  setIfEmpty("# Voters", details.voters);
+  setIfEmpty("# Grps", details.groups);
+  setIfEmpty("# Cmnts", details.comments);
+  setIfEmpty("# Meta", details.meta);
+  setIfEmpty("Language", details.lang);
+  setIfEmpty("Account Owner", details.owner);
   // Location intentionally left blank
 }

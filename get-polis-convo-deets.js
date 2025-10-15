@@ -31,7 +31,7 @@ async function fetchWithHeaders(url) {
 
 (async () => {
   try {
-    const d = await getPolisDetails(input, fetchWithHeaders);
+    const d = await getPolisDetails(input, { fetchFn: fetchWithHeaders });
     if (d.error) {
       console.error("❌ Error:", d.error, d.cause ? `- ${d.cause}` : "");
       if (debug && d.cause) console.error("Debug cause:", d.cause);
