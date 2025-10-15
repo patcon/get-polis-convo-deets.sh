@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { getPolisDetails } from "./polis-utils.js";
+import { getPolisDetails } from "./../lib/polis-utils.js";
 
 const input = process.argv[2];
 const debug = process.argv.includes("--debug");
