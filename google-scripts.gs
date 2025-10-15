@@ -42,18 +42,27 @@ function getCommentLangs(baseUrl, convoId, fetchFn) {
   try {
     comments = JSON.parse(fetchFn(url).text());
   } catch (err) {
+    Logger.log(
+      `Failed to fetch comments for language detection: ${err.message}`
+    );
+    return "unknown";
+  }
+
+  // Ensure comments is an array
+  if (!Array.isArray(comments)) {
+    Logger.log("Comments response is not an array");
     return "unknown";
   }
 
   const langCounts = {};
   comments.forEach(function (c) {
     // Only count languages for comments that are not moderated out (mod !== -1)
-    if (c.lang && c.mod !== -1)
+    if (c && c.lang && c.mod !== -1)
       langCounts[c.lang] = (langCounts[c.lang] || 0) + 1;
   });
 
   // fallback if no comment langs
-  if (!Object.keys(langCounts).length) langCounts["unknown"] = 1;
+  if (!Object.keys(langCounts).length) return "unknown";
 
   return Object.entries(langCounts)
     .sort(function (a, b) {
@@ -150,12 +159,16 @@ function getPolisDetails(input, fetchFn) {
   }
 
   // Get comprehensive language information from comments
-  let lang = convo.lang || "---";
+  let lang =
+    (convData.nextComment && convData.nextComment.lang) || convo.lang || "---";
   try {
-    lang = getCommentLangs(baseUrl, convoId, fetchFn);
+    const commentLangs = getCommentLangs(baseUrl, convoId, fetchFn);
+    if (commentLangs && commentLangs !== "unknown") {
+      lang = commentLangs;
+    }
   } catch (err) {
     // Fallback to conversation lang if comment fetching fails
-    lang = convo.lang || "---";
+    Logger.log(`Comment language detection failed: ${err.message}`);
   }
 
   return {
