@@ -1,0 +1,20 @@
+{
+  "name": "get-polis-convo-deets.sh",
+  "version": "1.0.0",
+  "description": "A simple script for getting details about a Polis conversation on the command line.",
+  "main": "get-polis-convo-deets.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/patcon/get-polis-convo-deets.sh.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/patcon/get-polis-convo-deets.sh/issues"
+  },
+  "homepage": "https://github.com/patcon/get-polis-convo-deets.sh#readme"
+}
